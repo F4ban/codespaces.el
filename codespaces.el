@@ -53,26 +53,37 @@ When this is nil, the default of '/workspaces/<repo-name>' is used."
   :group 'codespaces
   :type 'string)
 
+(defvar codespaces--validated nil
+  "Whether the gh CLI has been validated for codespaces access.")
+
+(defun codespaces--validate-gh ()
+  "Validate that `gh' is available and properly configured.
+This check is performed lazily on first use rather than at setup time."
+  (unless codespaces--validated
+    (with-current-buffer (get-buffer-create "*codespaces-output*")
+      (special-mode))
+    (unless (executable-find "gh")
+      (user-error "Could not find `gh' program in your PATH"))
+    (unless (featurep 'json)
+      (user-error "Emacs JSON support not available; your Emacs is too old"))
+    (let ((status
+           (let ((inhibit-read-only t))
+             (shell-command
+              (if (eq system-type 'windows-nt)
+                  "gh codespace list 1>NUL"
+                "gh codespace list 1>/dev/null")
+              nil "*codespaces-output*"))))
+      (unless (zerop status)
+        (user-error
+         (concat "Command `gh codespace list` failed ... "
+                 "[See *codespaces-output* buffer for details]"))))
+    (setq codespaces--validated t)))
+
 (defun codespaces-setup ()
-  "Set up the ghcs tramp-method.  Should be called after requiring this package."
+  "Set up the ghcs tramp-method.  Should be called after requiring this package.
+This registers the TRAMP method without validating gh CLI availability,
+allowing for faster startup. Validation happens lazily on first use."
   (interactive)
-  (with-current-buffer (get-buffer-create "*codespaces-output*")
-    (special-mode))
-  (unless (executable-find "gh")
-    (user-error "Could not find `gh' program in your PATH"))
-  (unless (featurep 'json)
-    (user-error "Emacs JSON support not available; your Emacs is too old"))
-  (let ((status
-         (let ((inhibit-read-only t))
-           (shell-command
-            (if (eq system-type 'windows-nt)
-                "gh codespace list 1>NUL"
-              "gh codespace list 1>/dev/null")
-            nil "*codespaces-output*"))))
-    (unless (zerop status)
-      (user-error
-       (concat "Command `gh codespace list` failed ... "
-               "[See *codespaces-output* buffer for details]"))))
   (let ((ghcs (assoc "ghcs" tramp-methods))
         (ghcs-methods '((tramp-login-program "gh")
                         (tramp-login-args (("codespace") ("ssh") ("-c") ("%h")))
@@ -143,6 +154,7 @@ When this is nil, the default of '/workspaces/<repo-name>' is used."
 
 (defun codespaces--all-codespaces ()
   "Fetch all user codespaces by executing `gh'."
+  (codespaces--validate-gh)
   (let ((gh-invocation "gh codespace list --json name,displayName,repository,state,gitStatus,lastUsedAt"))
     (codespaces--locally
      (codespaces--build-table (json-parse-string (shell-command-to-string gh-invocation))))))
