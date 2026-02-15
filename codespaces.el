@@ -82,7 +82,7 @@ This check is performed lazily on first use rather than at setup time."
 (defun codespaces-setup ()
   "Set up the ghcs tramp-method.  Should be called after requiring this package.
 This registers the TRAMP method without validating gh CLI availability,
-allowing for faster startup. Validation happens lazily on first use."
+allowing for faster startup.  Validation happens lazily on first use."
   (interactive)
   (let ((ghcs (assoc "ghcs" tramp-methods))
         (ghcs-methods '((tramp-login-program "gh")
